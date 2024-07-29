@@ -1,0 +1,119 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+//user
+model User {
+  id        String   @id @default(uuid())
+  fullname  String
+  bio       String?
+  avatar    String?
+  email     String   @unique
+  password  String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+}
+
+//library
+
+enum EChapter {
+  GRAMMAR
+  VOCABULARY
+  LISTENING
+  WRITING
+  READING
+  SPEAKING
+  CUSTOM
+  TOEIC
+  IELTS
+}
+
+enum EDifficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+enum EChapterStatus {
+  PUBLISHED
+  DRAFT
+  INCOMPLETED
+}
+
+enum EExercise {
+  MULTIPLE_CHOICE
+  FILL_BLANK
+}
+
+model Chapter {
+  id           String         @id @default(uuid())
+  name         String
+  type         EChapter[]
+  banner       String?
+  difficulty   EDifficulty
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+  viewed       Int            @default(0)
+  status       EChapterStatus @default(DRAFT)
+  description  String
+  exercises    Exercise[]
+  explanations Explanation[]
+}
+
+model Exercise {
+  id           String     @id @default(uuid())
+  name         String
+  construction String
+  type         EExercise
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  questions    Question[]
+  chapterId    String
+  chapter      Chapter    @relation(fields: [chapterId], references: [id])
+}
+
+model Question {
+  id         String   @id @default(uuid())
+  question   String
+  exerciseId String
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  exercise   Exercise @relation(fields: [exerciseId], references: [id])
+  answers    Answer[]
+}
+
+model Answer {
+  id         String   @id @default(uuid())
+  label      String?
+  value      String
+  isCorrect  Boolean?
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id])
+}
+
+model Explanation {
+  id        String   @id @default(uuid())
+  name      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  chapterId String
+  chapter   Chapter  @relation(fields: [chapterId], references: [id])
+}
+
+model Search {
+  id          String   @id @default(uuid())
+  name        String
+  scope       String[]
+  description String?
+}
