@@ -1,89 +1,125 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { LoginDto, RegisterDto } from './auth.dto';
-import { LoginResponse, TokenResponse } from './auth.model';
-import { User } from '@prisma/client';
-import { PrismaService } from 'src/prisma.service';
-import * as bcrypt from 'bcrypt'
-import { response } from 'express';
-import { JwtService } from '@nestjs/jwt';
+import { ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
+import * as argon from 'argon2';
+import { AuthDto } from './dto';
+import { PrismaService } from 'src/prisma.service';
+import { JwtPayload, Tokens } from './type';
+import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class AuthService {
     constructor(
-        private readonly prisma: PrismaService,
-        private readonly jwtService: JwtService,
-        private readonly configService: ConfigService
+        private prisma: PrismaService,
+        private jwtService: JwtService,
+        private config: ConfigService,
     ) { }
 
-    async login(loginDto: LoginDto): Promise<LoginResponse> {
-        const user = await this.validateUser(loginDto);
-        if (!user) {
-            throw new BadRequestException({ invalidCredentials: 'Invalid credentials' });
-        }
-        const { accessToken, refreshToken } = await this.createToken(user);
-        return {
-            accessToken,
-            refreshToken,
-            user
-        }
+    async signupLocal({ email, password }: AuthDto): Promise<Tokens> {
+        const hashedPassword = await argon.hash(password);
+        const user = await this.prisma.user
+            .create({
+                data: {
+                    email,
+                    password: hashedPassword,
+                },
+            })
+            .catch((error) => {
+                if (error instanceof PrismaClientKnownRequestError) {
+                    if (error.code === 'P2002') {
+                        throw new ForbiddenException('Credentials incorrect');
+                    }
+                }
+                throw error;
+            });
+
+        const tokens = await this.getTokens(user.id, user.email);
+        await this.updateRefreshTokenHash(user.id, tokens.refresh_token);
+        return tokens;
     }
 
-    async register(registerDto: RegisterDto): Promise<User> {
-        const existingUser = await this.prisma.user.findUnique({
-            where: { email: registerDto.email }
-        })
-
-        if (existingUser) {
-            throw new BadRequestException({ email: 'Email is already in use' });
-        }
-
-        const hashedPassword = await bcrypt.hash(registerDto.password, 10)
-        const user = await this.prisma.user.create({
-            data: {
-                fullname: registerDto.fullname,
-                password: hashedPassword,
-                email: registerDto.email,
-            }
-        })
-        await this.createToken(user);
-        return user
-    }
-
-    private async validateUser(loginDto: LoginDto) {
+    async signinLocal({ email, password }: AuthDto): Promise<Tokens> {
         const user = await this.prisma.user.findUnique({
-            where: { email: loginDto.email },
-        })
-        if (user && (await bcrypt.compare(loginDto.password, user.password))) {
-            return user;
-        }
-        return null;
+            where: {
+                email: email,
+            },
+        });
+
+        if (!user) throw new ForbiddenException('Access Denied');
+
+        const passwordMatches = await argon.verify(user.password, password);
+        if (!passwordMatches) throw new ForbiddenException('Access Denied');
+
+        const tokens = await this.getTokens(user.id, user.email);
+        await this.updateRefreshTokenHash(user.id, tokens.refresh_token);
+
+        return tokens;
     }
 
-    async createToken({ id }: User): Promise<TokenResponse> {
-        const payload = { id };
-
-        const accessToken = this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('ACCESS_TOKEN_SECRET'),
-            expiresIn: '1day',
+    async logout(userId: string): Promise<boolean> {
+        await this.prisma.user.updateMany({
+            where: {
+                id: userId,
+                hashedRefreshToken: {
+                    not: null,
+                },
+            },
+            data: {
+                hashedRefreshToken: null,
+            },
         });
+        return true;
+    }
 
-        const refreshToken = this.jwtService.sign(payload, {
-            secret: this.configService.get<string>('REFRESH_TOKEN_SECRET'),
-            expiresIn: '7d',
+    async refreshTokens(userId: string, refreshToken: string): Promise<Tokens> {
+        const user = await this.prisma.user.findUnique({
+            where: {
+                id: userId,
+            },
         });
+        if (!user || !user.hashedRefreshToken) throw new ForbiddenException('Access Denied');
 
-        response.cookie('access_token', accessToken, { httpOnly: true });
-        response.cookie('refresh_token', refreshToken, { httpOnly: true });
+        const rtMatches = await argon.verify(user.hashedRefreshToken, refreshToken);
+        if (!rtMatches) throw new ForbiddenException('Access Denied');
+
+        const tokens = await this.getTokens(user.id, user.email);
+        await this.updateRefreshTokenHash(user.id, tokens.refresh_token);
+
+        return tokens;
+    }
+
+    async updateRefreshTokenHash(userId: string, refreshToken: string): Promise<void> {
+        const hashedRefreshToken = await argon.hash(refreshToken);
+        await this.prisma.user.update({
+            where: {
+                id: userId,
+            },
+            data: {
+                hashedRefreshToken
+            },
+        });
+    }
+
+    async getTokens(userId: string, email: string): Promise<Tokens> {
+        const jwtPayload: JwtPayload = {
+            id: userId,
+            email: email,
+        };
+
+        const [accessToken, refreshToken] = await Promise.all([
+            this.jwtService.signAsync(jwtPayload, {
+                secret: this.config.get<string>('ACCESS_TOKEN_SECRET'),
+                expiresIn: '15m',
+            }),
+            this.jwtService.signAsync(jwtPayload, {
+                secret: this.config.get<string>('REFRESH_TOKEN_SECRET'),
+                expiresIn: '7d',
+            }),
+        ]);
 
         return {
-            accessToken,
-            refreshToken
-        }
-    }
-
-    async logout() {
-        response.clearCookie('access_token');
-        response.clearCookie('refresh_token');
+            access_token: accessToken,
+            refresh_token: refreshToken,
+        };
     }
 }
