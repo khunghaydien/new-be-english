@@ -17,6 +17,7 @@ CREATE TABLE "users" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
     "email" TEXT NOT NULL,
     "password" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
     "hashedRefreshToken" TEXT,
 
     CONSTRAINT "users_pkey" PRIMARY KEY ("id")

@@ -1,11 +1,11 @@
-import { ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon from 'argon2';
-import { AuthDto } from './dto';
 import { PrismaService } from 'src/prisma.service';
 import { JwtPayload, Tokens } from './type';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import { SignInDto, SignUpDto } from './dto';
+import { User } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -15,48 +15,45 @@ export class AuthService {
         private config: ConfigService,
     ) { }
 
-    async signupLocal({ email, password }: AuthDto): Promise<Tokens> {
+    async signUp({ email, password, name }: SignUpDto): Promise<User> {
+        const existedUser = await this.prisma.user.findUnique({
+            where: { email }
+        })
+        if (existedUser) {
+            throw new BadRequestException({ email: 'Email is already in use' });
+        }
         const hashedPassword = await argon.hash(password);
-        const user = await this.prisma.user
-            .create({
-                data: {
-                    email,
-                    password: hashedPassword,
-                },
-            })
-            .catch((error) => {
-                if (error instanceof PrismaClientKnownRequestError) {
-                    if (error.code === 'P2002') {
-                        throw new ForbiddenException('Credentials incorrect');
-                    }
-                }
-                throw error;
-            });
-
-        const tokens = await this.getTokens(user.id, user.email);
-        await this.updateRefreshTokenHash(user.id, tokens.refresh_token);
-        return tokens;
+        const user = await this.prisma.user.create({
+            data: {
+                name,
+                password: hashedPassword,
+                email
+            }
+        })
+        return user
     }
 
-    async signinLocal({ email, password }: AuthDto): Promise<Tokens> {
+    async validateUser({ email, password }: SignInDto) {
         const user = await this.prisma.user.findUnique({
-            where: {
-                email: email,
-            },
-        });
+            where: { email },
+        })
+        if (user && (await argon.verify(user.password, password))) {
+            return user;
+        }
+        return null;
+    }
 
-        if (!user) throw new ForbiddenException('Access Denied');
-
-        const passwordMatches = await argon.verify(user.password, password);
-        if (!passwordMatches) throw new ForbiddenException('Access Denied');
-
+    async signIn({ email, password }: SignInDto): Promise<Tokens> {
+        const user = await this.validateUser({ email, password });
+        if (!user) {
+            throw new BadRequestException({ invalidCredentials: 'Invalid credentials' });
+        }
         const tokens = await this.getTokens(user.id, user.email);
         await this.updateRefreshTokenHash(user.id, tokens.refresh_token);
-
         return tokens;
     }
 
-    async logout(userId: string): Promise<boolean> {
+    async signOut(userId: string): Promise<boolean> {
         await this.prisma.user.updateMany({
             where: {
                 id: userId,
@@ -77,10 +74,10 @@ export class AuthService {
                 id: userId,
             },
         });
-        if (!user || !user.hashedRefreshToken) throw new ForbiddenException('Access Denied');
+        if (!user || !user.hashedRefreshToken) throw new ForbiddenException('User invalid');
 
-        const rtMatches = await argon.verify(user.hashedRefreshToken, refreshToken);
-        if (!rtMatches) throw new ForbiddenException('Access Denied');
+        const RefreshTokenMatches = await argon.verify(user.hashedRefreshToken, refreshToken);
+        if (!RefreshTokenMatches) throw new ForbiddenException('Refresh token invalid');
 
         const tokens = await this.getTokens(user.id, user.email);
         await this.updateRefreshTokenHash(user.id, tokens.refresh_token);
