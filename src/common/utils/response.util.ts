@@ -2,12 +2,20 @@ import { Response } from 'express';
 import { BadRequestException, ConflictException, ForbiddenException, HttpStatus, NotFoundException, UnauthorizedException } from '@nestjs/common';
 
 export class ResponseUtil {
-    static success(res: Response, message: string, data: any, statusCode: number = HttpStatus.OK) {
-        res.status(statusCode).json({
-            statusCode,
-            message,
-            data,
-        });
+    // static success(res: Response, message: string, data: any, statusCode: number = HttpStatus.OK) {
+    //     res.status(statusCode).json({
+    //         statusCode,
+    //         message,
+    //         data,
+    //     });
+    // }
+
+    success(message: string, data: any, status: number) {
+        return {
+            statusCode: status,
+            message: message,
+            data: data,
+        };
     }
     static error(res: Response, message: string, error: any): void {
         // Determine the status code based on the type of error
