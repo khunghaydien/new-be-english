@@ -6,13 +6,16 @@ import { OrderByDto, PaginationDto } from 'src/common/dto';
 import { isEmpty } from 'class-validator';
 import { ChaptersResponse } from './model';
 import { PaginationResponse } from 'src/common/model';
+import { SearchService } from 'src/search/search.service';
 
 @Injectable()
 export class LibraryService {
     constructor(
-        private prisma: PrismaService
+        private prisma: PrismaService,
+        private searchService: SearchService
     ) { }
-    async createChapter({ name, description, difficulty, type }: CreateChapterDto): Promise<Chapter> {
+
+    async createChapter({ name, type, description, difficulty }: CreateChapterDto): Promise<Chapter> {
         try {
             const chapter = await this.prisma.chapter.create({
                 data: {
@@ -22,9 +25,16 @@ export class LibraryService {
                     difficulty
                 }
             })
+            this.searchService.createSearch({
+                description: '',
+                relativeId: chapter.id,
+                name: chapter.name,
+                type: [...type, difficulty]
+            });
             return chapter
         } catch { }
     }
+
     async updateChapter({ name, type, description, difficulty }: UpdateChapterDto): Promise<Chapter> {
         try {
             const chapter = await this.prisma.chapter.create({
@@ -35,6 +45,12 @@ export class LibraryService {
                     difficulty
                 },
             });
+            this.searchService.updateSearch({
+                description: '',
+                relativeId: chapter.id,
+                name: chapter.name,
+                type: [...type, difficulty]
+            });
             return chapter
         } catch { }
     }
@@ -44,6 +60,7 @@ export class LibraryService {
             const chapter = await this.prisma.chapter.delete({
                 where: { id }
             })
+            this.searchService.deleteSearch(id);
             return chapter
         } catch { }
     }

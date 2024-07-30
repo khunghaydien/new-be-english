@@ -1,8 +1,7 @@
-import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Post, Put, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Post, Put, Query, Res } from '@nestjs/common';
 import { LibraryService } from './library.service';
 import { CreateChapterDto, FilterChapterDto, UpdateChapterDto } from './dto/chapter.dto';
 import { ResponseUtil } from 'src/common/utils/response.util';
-import { Response } from 'express';
 import { OrderByDto, PaginationDto } from 'src/common/dto';
 import { Public } from 'src/common/decorators';
 
@@ -22,10 +21,10 @@ export class LibraryController {
         return this.res.success('Create chapter successed', chapter, HttpStatus.CREATED);
     }
 
-    @Delete('chapter')
+    @Delete('chapter/:id')
     @HttpCode(HttpStatus.OK)
     async deleteChapter(
-        @Query() id: string
+        @Param() id: string
     ) {
         const chapter = await this.libraryService.deleteChapter(id);
         return this.res.success('Delete chapter successed', chapter, HttpStatus.OK);

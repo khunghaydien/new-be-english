@@ -25,8 +25,8 @@ export class AuthController {
     async signIn(
         @Body() signInDto: SignInDto
     ) {
-        const tokens = await this.authService.signIn(signInDto);
-        return this.res.success('Login successed', tokens, HttpStatus.OK);
+        const res = await this.authService.signIn(signInDto);
+        return this.res.success('Login successed', res, HttpStatus.OK);
     }
 
     @Public()

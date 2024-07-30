@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as argon from 'argon2';
 import { PrismaService } from 'src/prisma.service';
-import { JwtPayload, Tokens } from './type';
+import { JwtPayload, LoginResponse, Tokens } from './type';
 import { SignInDto, SignUpDto } from './dto';
 import { User } from '@prisma/client';
 
@@ -43,14 +43,20 @@ export class AuthService {
         return null;
     }
 
-    async signIn({ email, password }: SignInDto): Promise<Tokens> {
+    async signIn({ email, password }: SignInDto): Promise<LoginResponse> {
         const user = await this.validateUser({ email, password });
         if (!user) {
             throw new BadRequestException({ invalidCredentials: 'Invalid credentials' });
         }
-        const tokens = await this.getTokens(user.id, user.email);
-        await this.updateRefreshTokenHash(user.id, tokens.refresh_token);
-        return tokens;
+        const { access_token, refresh_token } = await this.getTokens(user.id, user.email);
+        await this.updateRefreshTokenHash(user.id, refresh_token);
+        return {
+            user,
+            tokens: {
+                access_token,
+                refresh_token
+            }
+        };
     }
 
     async signOut(userId: string): Promise<boolean> {

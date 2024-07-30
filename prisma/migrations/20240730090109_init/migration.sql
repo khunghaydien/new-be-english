@@ -88,8 +88,9 @@ CREATE TABLE "Explanation" (
 -- CreateTable
 CREATE TABLE "Search" (
     "id" TEXT NOT NULL,
+    "relativeId" TEXT,
     "name" TEXT NOT NULL,
-    "scope" TEXT[],
+    "type" TEXT[],
     "description" TEXT,
 
     CONSTRAINT "Search_pkey" PRIMARY KEY ("id")
@@ -97,6 +98,9 @@ CREATE TABLE "Search" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "Search_relativeId_key" ON "Search"("relativeId");
 
 -- AddForeignKey
 ALTER TABLE "Exercise" ADD CONSTRAINT "Exercise_chapterId_fkey" FOREIGN KEY ("chapterId") REFERENCES "Chapter"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

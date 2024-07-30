@@ -115,7 +115,8 @@ model Explanation {
 
 model Search {
   id          String   @id @default(uuid())
+  relativeId  String   @unique
   name        String
-  scope       String[]
+  type        String[]
   description String?
 }
